@@ -85,8 +85,6 @@ int nObjects = 0;    // How many objects are currenly in the scene.
 int currObject = -1; // The current object
 int toolObj = -1;    // The object currently being modified
 
-float animFreeze = 0.0; //Sets pause/resume time for animation
-
 float POSE_TIME = 1.0; //Time relative to animation start
 
 //-----Global Variable for adjusting colour over time-------------------------
@@ -275,6 +273,18 @@ static void adjustScaleY(vec2 sy)
     sceneObjs[toolObj].scale+=sy[0]; sceneObjs[toolObj].loc[1]+=sy[1];
 }
 
+//BRAD Callbacks for ANIMATIONS
+static void adjustMoveSpeed(vec2 ab){
+  sceneObjs[toolObj].animSpeed+=ab[0]; sceneObjs[toolObj].animSpeed+=ab[1];
+}
+
+static void adjustFrameNumber(vec2 cd){
+  sceneObjs[toolObj].animPerCycle+=cd[0]; sceneObjs[toolObj].animPerCycle+=cd[1];
+}
+
+static void adjustDistance(vec2 ef){
+  sceneObjs[toolObj].animDist+=ef[0]; sceneObjs[toolObj].animDist+=ef[0];
+}
 
 //----------------------------------------------------------------------------
 //------Set the mouse buttons to rotate the camera----------------------------
@@ -308,18 +318,25 @@ static void addObject(int id)
     if (id > 55){
       sceneObjs[nObjects].scale = 0.03; //Scales human models to be size appropriate
 
-      //If the object hasnt been paused, begin anim straight away
-      if (animFreeze == 0.0){
-        sceneObjs[nObjects].animBegin = glutGet(GLUT_ELAPSED_TIME); //Begins animation
-      }
-      //Otherwise resume from current place
-      else{
-        sceneObjs[nObjects].animBegin = animFreeze;
-      }
-      sceneObjs[nObjects].animSpeed = 1.0;
+
+      sceneObjs[nObjects].animBegin = 0.0;
+
+      //Animation properties
+      sceneObjs[nObjects].animSpeed = 0.1;
       sceneObjs[nObjects].animDist = 2.0;
-      sceneObjs[nObjects].numFrames = 250;
-      sceneObjs[nObjects].animPerCycle = 1;
+      sceneObjs[nObjects].numFrames = 800;
+      sceneObjs[nObjects].animPerCycle = 0.2;
+
+      //Make animation run properly
+      if (id == 59){
+        sceneObjs[nObjects].numFrames = 500;
+      }
+
+      //BRAD: Extension of animation: spawns in with random animation SPEED
+      if (id == 58){
+        float r = ((float) rand()) / (float) RAND_MAX;
+        sceneObjs[nObjects].animSpeed = r;
+      }
     }
 
     sceneObjs[nObjects].rgb[0] = 0.7; sceneObjs[nObjects].rgb[1] = 0.7;
@@ -380,7 +397,7 @@ void init( void )
     glGenTextures(numTextures, textureIDs); CheckError(); // Allocate texture objects
 
     // Load shaders and use the resulting shader program
-    shaderProgram = InitShader( "vStart.vert", "fStart.frag" );
+    shaderProgram = InitShader( "vStart.glsl", "fStart.glsl" );
 
     glUseProgram( shaderProgram ); CheckError();
 
@@ -591,7 +608,7 @@ void display( void )
           //NOTE: MOST CODE DEALING WITH ANIMATIONS GATHERED FROM THIS SOURCE:
           //http://ogldev.atspace.co.uk/www/tutorial38/tutorial38.html
 
-          vec4 animMovement = 0.0;
+
           POSE_TIME = 1.0;
 
           if (sceneObjs[i].meshId > 55){
@@ -610,13 +627,9 @@ void display( void )
               sceneObjs[i].animSpeed = 0.1;
             }
 
-
             //Code to get time since animatin began initially or since a pause
-            //Animation is paused
-            if (animFreeze !=0){
-              elapsedTime = float (animFreeze - sceneObjs[i].animBegin)/1000.0;
-            }
-            //Animation is running unpaused
+
+            //Animation is running
             else{
               elapsedTime = float (glutGet(GLUT_ELAPSED_TIME)
                             - sceneObjs[i].animBegin)/1000.0;
@@ -625,11 +638,6 @@ void display( void )
             POSE_TIME = fmod((0.5 + 0.5 * sin(elapsedTime /(sceneObjs[i].animDist/sceneObjs[i].animSpeed) * 2 * 3.1415))
                             * sceneObjs[i].animPerCycle * sceneObjs[i].numFrames, sceneObjs[i].numFrames);
 
-            //Calculates displacement for the models
-            animMovement = RotateZ(sceneObjs[i].angles[2]) * RotateY(sceneObjs[i].angles[1])
-                            * RotateX(sceneObjs[i].angles[0]) *
-                            vec4 (0.0,0.0,-0.5 * sceneObjs[i].animDist *
-                              sin(elapsedTime/(sceneObjs[i].animDist/sceneObjs[i].animSpeed)*2*3.1415),0.0);
           }
 
         drawMesh(sceneObjs[i]);
@@ -811,6 +819,28 @@ static void mainmenu(int id)
         setToolCallbacks(adjustAngleYX, mat2(400, 0, 0, -400),
                          adjustAngleZTexscale, mat2(400, 0, 0, 15) );
     }
+
+    //BRAD: INCREASES/DECREASES ANIMATION SPEED
+    //Holding left mouse button and moving right or up increases speed,
+    //Holding left mouse button and moving left or down decreases speed
+    if (id == 60 && currObject >= 0){
+      setToolCallbacks(adjustMoveSpeed, mat2(5,0,0,2),
+                      adjustFrameNumber, mat2(5,0,0,2));
+    }
+
+  /*  static void adjustMoveSpeed(vec2 ab){
+      sceneObjs[toolObj].animSpeed+=ab[0]; sceneObjs[toolObj].animSpeed+=ab[1];
+    }
+
+    static void adjustFrameNumber(vec2 cd){
+      sceneObjs[toolObject].animPerCycle+=cd[0]; sceneObjs[toolObject].animPerCycle+=cd[1];
+    }
+
+    static void adjustDistance(vec2 ef){
+      sceneObjs[toolObject].animDist+=ef[0]; sceneObjs[toolObject].animDist+=ef[0];
+    }*/
+
+
     //SAM: Used to change texture of current object randomly
     if(id == 95) {
         changeTexture = true;
@@ -861,6 +891,7 @@ static void makeMenu()
     glutAddSubMenu("Texture",texMenuId);
     glutAddSubMenu("Ground Texture",groundMenuId);
     glutAddSubMenu("Lights",lightMenuId);
+    glutAddMenuEntry("Adjust Animation Speed",60);//BRAD: CHANGES ANIMATION SPEED
     glutAddMenuEntry("Random Texture", 95);//SAM: CHANGES TEXTURE OF CURRENT OBJECT RANDOMLY
     glutAddMenuEntry("Change Colour Over Time", 96);//SAM: MENU ENTRY TO CHANGE COLOUR OF OBJECT
     glutAddMenuEntry("Delete Object", 97);//BRAD: MENU ENTRY TO DELETE AN OBJECT
