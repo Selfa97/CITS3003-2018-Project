@@ -78,6 +78,16 @@ int toolObj = -1;    // The object currently being modified
 
 float POSE_TIME = 1.0; //Time relative to animation start
 
+//-----Global Variable for adjusting colour over time-------------------------
+bool changeColour = false;
+bool increaseR = true;
+bool increaseG = true;
+bool increaseB = true;
+
+//-----Global Variable for random texture-------------------------------------
+bool changeTexture = false;
+int changeTime = 0;
+
 //----------------------------------------------------------------------------
 //
 // Loads a texture by number, and binds it for later use.
@@ -344,7 +354,7 @@ void init( void )
     glGenTextures(numTextures, textureIDs); CheckError(); // Allocate texture objects
 
     // Load shaders and use the resulting shader program
-    shaderProgram = InitShader( "vStart.glsl", "fStart.glsl" );
+    shaderProgram = InitShader( "vStart.vert", "fStart.frag" );
 
     glUseProgram( shaderProgram ); CheckError();
 
@@ -451,6 +461,59 @@ void drawMesh(SceneObject sceneObj)
 }
 
 //----------------------------------------------------------------------------
+//-----SAM: Function to change colour over time ----------------------------
+static void changeColourTime(int objectId) {
+    int changeR = 1;
+    int changeG = 2;
+    int changeB = 3;
+
+    int red = (int)(sceneObjs[objectId].rgb[0] * 255);
+    int green = (int)(sceneObjs[objectId].rgb[1] * 255);
+    int blue = (int)(sceneObjs[objectId].rgb[2] * 255);
+
+    if(red > 255) {
+        increaseR = false;
+    } else if(red < 0) {
+        increaseR = true;
+    }
+    if(green > 255) {
+        increaseG = false;
+    } else if(green < 0) {
+        increaseG = true;
+    }
+    if(blue > 255) {
+        increaseB = false;
+    } else if(blue < 0) {
+        increaseB = true;
+    }
+
+    if(increaseR) {
+        sceneObjs[objectId].rgb[0] = (red + changeR)/255.0;
+    } else {
+        sceneObjs[objectId].rgb[0] = (red - changeR)/255.0;
+    }
+    if(increaseG) {
+        sceneObjs[objectId].rgb[1] = (green + changeG)/255.0;
+    } else {
+        sceneObjs[objectId].rgb[1] = (green - changeG)/255.0;
+    }
+    if(increaseB) {
+        sceneObjs[objectId].rgb[2] = (blue + changeB)/255.0;
+    } else {
+        sceneObjs[objectId].rgb[2] = (blue - changeB)/255.0;
+    }
+
+}
+
+static void randomTexture(int objectId) {
+    if(changeTime > 120) {
+        changeTexture = false;
+        changeTime = 0;
+    } else if(changeTime % 5 == 0) {
+        sceneObjs[objectId].texId = rand() % numTextures;
+    }
+}
+//----------------------------------------------------------------------------------
 
 void display( void )
 {
@@ -493,6 +556,16 @@ void display( void )
           CheckError();
 
         drawMesh(sceneObjs[i]);
+    }
+
+    //Update colour every refresh
+    if(changeColour) {
+        changeColourTime(currObject);
+    }
+
+    if(changeTexture) {
+        randomTexture(currObject);
+        changeTime++;
     }
 
     glutSwapBuffers();
@@ -661,6 +734,18 @@ static void mainmenu(int id)
         setToolCallbacks(adjustAngleYX, mat2(400, 0, 0, -400),
                          adjustAngleZTexscale, mat2(400, 0, 0, 15) );
     }
+    //SAM: Used to change texture of current object randomly
+    if(id == 95) {
+        changeTexture = true;
+    }
+    //SAM: Used to change colour over time of active object
+    if(id == 96) {
+        if(changeColour) {
+            changeColour = false;
+        } else {
+            changeColour = true;
+        }
+    }
     //BRAD: Used to delete the current object
     if (id == 97){
       deleteObject(currObject);
@@ -699,6 +784,8 @@ static void makeMenu()
     glutAddSubMenu("Texture",texMenuId);
     glutAddSubMenu("Ground Texture",groundMenuId);
     glutAddSubMenu("Lights",lightMenuId);
+    glutAddMenuEntry("Random Texture", 95);//SAM: CHANGES TEXTURE OF CURRENT OBJECT RANDOMLY
+    glutAddMenuEntry("Change Colour Over Time", 96);//SAM: MENU ENTRY TO CHANGE COLOUR OF OBJECT
     glutAddMenuEntry("Delete Object", 97);//BRAD: MENU ENTRY TO DELETE AN OBJECT
     glutAddMenuEntry("Restore Last Deleted Object", 98);//BRAD: MENU ENTRY TO RESTORE LAST DELETED OBJECT
     glutAddMenuEntry("EXIT", 99);
