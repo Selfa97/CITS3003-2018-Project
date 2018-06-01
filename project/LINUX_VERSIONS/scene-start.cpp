@@ -67,14 +67,25 @@ typedef struct {
     int meshId;
     int texId;
     float texScale;
+    //Animation info
+    int numFrames;
+    float animDist;
+    float animSpeed;
+    float animBegin;
+    float animPerCycle;
+
 } SceneObject;
 
 const int maxObjects = 1024; // Scenes with more than 1024 objects seem unlikely
+
+float elapsedTime; //Elasped time for animation
 
 SceneObject sceneObjs[maxObjects]; // An array storing the objects currently in the scene.
 int nObjects = 0;    // How many objects are currenly in the scene.
 int currObject = -1; // The current object
 int toolObj = -1;    // The object currently being modified
+
+float animFreeze = 0.0; //Sets pause/resume time for animation
 
 float POSE_TIME = 1.0; //Time relative to animation start
 
@@ -276,14 +287,29 @@ static void addObject(int id)
     sceneObjs[nObjects].loc[1] = 0.0;
     sceneObjs[nObjects].loc[2] = currPos[1];
     sceneObjs[nObjects].loc[3] = 1.0;
+    sceneObjs[nObjects].numFrames = 0.0;
+    sceneObjs[nObjects].animBegin = 0.0;
 
     if (id!=0 && id!=55){
         sceneObjs[nObjects].scale = 0.005;
       }
 
-      //BRAD: Scales human models to be size appropriate
+      //BRAD: Deals with human objects incl Animation
     if (id > 55){
-      sceneObjs[nObjects].scale = 0.03;
+      sceneObjs[nObjects].scale = 0.03; //Scales human models to be size appropriate
+
+      //If the object hasnt been paused, begin anim straight away
+      if (animFreeze == 0.0){
+        sceneObjs[nObjects].animBegin = glutGet(GLUT_ELAPSED_TIME); //Begins animation
+      }
+      //Otherwise resume from current place
+      else{
+        sceneObjs[nObjects].animBegin = animFreeze;
+      }
+      sceneObjs[nObjects].animSpeed = 1.0;
+      sceneObjs[nObjects].animDist = 2.0;
+      sceneObjs[nObjects].numFrames = 250;
+      sceneObjs[nObjects].animPerCycle = 1;
     }
 
     sceneObjs[nObjects].rgb[0] = 0.7; sceneObjs[nObjects].rgb[1] = 0.7;
@@ -375,14 +401,14 @@ void init( void )
     sceneObjs[1].loc = vec4(2.0, 1.0, 1.0, 1.0);
     sceneObjs[1].scale = 0.1;
     sceneObjs[1].texId = 0; // Plain texture
-    sceneObjs[1].brightness = 0.2; // The light's brightness is 5 times this (below).
+    sceneObjs[1].brightness = 0.5; // The light's brightness is 5 times this (below).
 
     //BRAD Add second, directional lightMenu
     addObject(55); //Sphere for second lightMenu
     sceneObjs[2].loc = vec4(-2.0,2.0,-2.0,1.0);
     sceneObjs[2].scale = 0.15;
     sceneObjs[2].texId = 0;
-    sceneObjs[2].brightness = 0.2;
+    sceneObjs[2].brightness = 0.5;
 
     addObject(rand() % numMeshes); // A test mesh
 
@@ -469,17 +495,23 @@ void display( void )
     SceneObject lightObj1 = sceneObjs[1];
     vec4 lightPosition = view * lightObj1.loc ;
     SceneObject lightObj2 = sceneObjs[2]; //Setting light to objects
+    lightObj2.loc.w =0.0; //Makes light directional
     vec4 lightPosition2 = view * lightObj2.loc;
 
     glUniform4fv( glGetUniformLocation(shaderProgram, "LightPosition"),
                   1, lightPosition);
     CheckError();
-
     //setting properties for light 2
     glUniform4fv(glGetUniformLocation(shaderProgram, "LightPosition2"),
                   1, lightPosition2);
     CheckError();
 
+    //BRAD: Creating variable for each light source to combine brightness and rgb
+    //Greatly assists in making second light source
+    glUniform3fv(glGetUniformLocation(shaderProgram, "Light1colBrightness"),
+                  1, lightObj1.rgb * lightObj1.brightness);
+    glUniform3fv(glGetUniformLocation(shaderProgram, "Light2colBrightness"),
+                  1, lightObj2.rgb * lightObj2.brightness);
 
     for (int i=0; i < nObjects; i++) {
         SceneObject so = sceneObjs[i];
@@ -491,6 +523,51 @@ void display( void )
           glUniform3fv( glGetUniformLocation(shaderProgram, "SpecularProduct"), 1, so.specular * rgb );
           glUniform1f( glGetUniformLocation(shaderProgram, "Shininess"), so.shine );
           CheckError();
+
+          //BRAD: Dealing with animated models
+          //NOTE: MOST CODE DEALING WITH ANIMATIONS GATHERED FROM THIS SOURCE:
+          //http://ogldev.atspace.co.uk/www/tutorial38/tutorial38.html
+
+          vec4 animMovement = 0.0;
+          POSE_TIME = 1.0;
+
+          if (sceneObjs[i].meshId > 55){
+            elapsedTime = 0.0;
+
+            //Avoiding negative/O amounts
+            if(sceneObjs[i].animPerCycle < 0.0){
+              sceneObjs[i].animPerCycle = 0.0;
+            }
+
+            if(sceneObjs[i].animDist < 0.0){
+              sceneObjs[i].animDist = 0.1;
+            }
+
+            if(sceneObjs[i].animSpeed < 0.0){
+              sceneObjs[i].animSpeed = 0.1;
+            }
+
+
+            //Code to get time since animatin began initially or since a pause
+            //Animation is paused
+            if (animFreeze !=0){
+              elapsedTime = float (animFreeze - sceneObjs[i].animBegin)/1000.0;
+            }
+            //Animation is running unpaused
+            else{
+              elapsedTime = float (glutGet(GLUT_ELAPSED_TIME)
+                            - sceneObjs[i].animBegin)/1000.0;
+            }
+
+            POSE_TIME = fmod((0.5 + 0.5 * sin(elapsedTime /(sceneObjs[i].animDist/sceneObjs[i].animSpeed) * 2 * 3.1415))
+                            * sceneObjs[i].animPerCycle * sceneObjs[i].numFrames, sceneObjs[i].numFrames);
+
+            //Calculates displacement for the models
+            animMovement = RotateZ(sceneObjs[i].angles[2]) * RotateY(sceneObjs[i].angles[1])
+                            * RotateX(sceneObjs[i].angles[0]) *
+                            vec4 (0.0,0.0,-0.5 * sceneObjs[i].animDist *
+                              sin(elapsedTime/(sceneObjs[i].animDist/sceneObjs[i].animSpeed)*2*3.1415),0.0);
+          }
 
         drawMesh(sceneObjs[i]);
     }
